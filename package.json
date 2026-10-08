@@ -1,0 +1,54 @@
+{
+  "name": "secretary-manage",
+  "version": "1.0.0",
+  "description": "团支部管理平台 - 团员管理、智慧团建对接、团员画像、团支部数字画像、团费收缴、邮件通知",
+  "type": "commonjs",
+  "main": "electron/main.js",
+  "author": "SecretaryManage <admin@secretary.local>",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node server.js",
+    "electron": "electron .",
+    "dist": "electron-builder --win nsis"
+  },
+  "engines": {
+    "node": ">=22.5.0"
+  },
+  "license": "MIT",
+  "devDependencies": {
+    "electron": "^35.0.0",
+    "electron-builder": "^25.1.8"
+  },
+  "build": {
+    "appId": "com.secretary.manage",
+    "productName": "团支部管理平台",
+    "asar": false,
+    "directories": {
+      "output": "dist"
+    },
+    "files": [
+      "server.js",
+      "lib/**/*",
+      "public/**/*",
+      "electron/**/*",
+      "package.json"
+    ],
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": ["x64"]
+        }
+      ],
+      "signAndEditExecutable": false
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "团支部管理平台"
+    }
+  }
+}

@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>团支部管理平台</title>
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+  <!-- 登录 -->
+  <div id="loginView" class="login-wrap" style="display:none">
+    <div class="login-card">
+      <div class="logo">
+        <svg class="emblem" viewBox="0 0 48 48" xmlns="http://www.w3.org/2000/svg">
+          <circle cx="24" cy="24" r="23" fill="#c8102e"/>
+          <path d="M24 6 L27 19 L40 19 L29 28 L33 41 L24 32 L15 41 L19 28 L8 19 L21 19 Z" fill="#ffd43b"/>
+          <circle cx="24" cy="24" r="6" fill="#c8102e"/>
+        </svg>
+        <div>
+          <h1>团支部管理平台</h1>
+          <div class="sub">团支书的好帮手 · 本地化部署</div>
+        </div>
+      </div>
+      <div class="form-item" style="margin-bottom:14px">
+        <label>管理员密码</label>
+        <input type="password" id="loginPwd" placeholder="请输入管理员密码" autocomplete="current-password">
+      </div>
+      <div class="err" id="loginErr"></div>
+      <button class="btn btn-primary" style="width:100%;justify-content:center" id="loginBtn">登 录</button>
+      <div class="help" style="text-align:center;margin-top:14px">初始密码 admin123，登录后请在「设置」中修改</div>
+    </div>
+  </div>
+
+  <!-- 主应用 -->
+  <div id="appView" class="app" style="display:none">
+    <aside class="sidebar">
+      <div class="brand">
+        <svg class="emblem" viewBox="0 0 48 48" xmlns="http://www.w3.org/2000/svg">
+          <circle cx="24" cy="24" r="23" fill="#c8102e"/>
+          <path d="M24 6 L27 19 L40 19 L29 28 L33 41 L24 32 L15 41 L19 28 L8 19 L21 19 Z" fill="#ffd43b"/>
+          <circle cx="24" cy="24" r="6" fill="#c8102e"/>
+        </svg>
+        <div>
+          <div class="t">团支部管理平台</div>
+          <div class="s" id="orgNameLabel">团支部</div>
+        </div>
+      </div>
+      <nav id="nav"></nav>
+      <div class="foot">本地化部署 · 数据保存在本机</div>
+    </aside>
+    <div class="main">
+      <div class="topbar">
+        <div class="page-title" id="pageTitle"></div>
+        <div class="actions">
+          <button class="btn btn-ghost btn-sm" id="logoutBtn">退出登录</button>
+        </div>
+      </div>
+      <div class="content" id="content"></div>
+    </div>
+  </div>
+
+  <div class="toast-wrap" id="toastWrap"></div>
+  <div id="modalRoot"></div>
+
+  <script src="/charts.js"></script>
+  <script src="/app.js"></script>
+</body>
+</html>
