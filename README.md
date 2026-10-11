@@ -93,3 +93,12 @@ SQLITE_DB=../data/secretary.db DATABASE_URL=postgresql://... node db/migrate-sql
 ```
 
 迁移会：复制 settings/members/activities/email_log/fee 等，并由 `settings.admin_password` + SMTP 邮箱生成管理员账号。
+
+## 六、版本与变更记录
+
+所有更新记录在 [CHANGELOG.md](CHANGELOG.md)，并遵循以下约定：
+
+- 每次更新：追加 changelog 条目 + 修改根目录 `package.json` 的 `version`（客户端部署版本号）。
+- 版本号用 SemVer：破坏性/架构改动升主版本，新增功能升次版本，修复升修订号。
+- 客户端安装程序文件名随版本号变化（如 `团支部管理平台 Setup 1.1.0.exe`）。
+
