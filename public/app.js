@@ -160,10 +160,12 @@ function syncLeagueSection() {
 
 /* ============================ 登录 ============================ */
 async function tryLogin() {
+  const email = ($('#loginEmail').value || '').trim();
   const pwd = $('#loginPwd').value;
   $('#loginErr').textContent = '';
+  if (!email || !pwd) { $('#loginErr').textContent = '请输入邮箱和密码'; return; }
   try {
-    await api('POST', 'login', { password: pwd });
+    await api('POST', 'auth/login', { email, password: pwd });
     showApp();
     location.hash = '#/dashboard';
   } catch (e) {
@@ -173,7 +175,7 @@ async function tryLogin() {
 
 async function checkLogin() {
   try {
-    await api('GET', 'me');
+    await api('GET', 'auth/me');
     return true;
   } catch { return false; }
 }
@@ -1014,7 +1016,8 @@ window.genOnePortrait = genOnePortrait;
 window.addEventListener('hashchange', route);
 $('#loginBtn').addEventListener('click', tryLogin);
 $('#loginPwd').addEventListener('keydown', (e) => { if (e.key === 'Enter') tryLogin(); });
-$('#logoutBtn').addEventListener('click', async () => { await api('POST', 'logout'); showLogin(); });
+$('#loginEmail').addEventListener('keydown', (e) => { if (e.key === 'Enter') tryLogin(); });
+$('#logoutBtn').addEventListener('click', async () => { await api('POST', 'auth/logout'); showLogin(); });
 
 (async function init() {
   const ok = await checkLogin();
