@@ -191,6 +191,8 @@ const NAV = [
   { path: 'branch', label: '数字画像', icon: '📈' },
   { path: 'fees', label: '团费收缴', icon: '💰' },
   { path: 'activities', label: '活动管理', icon: '📅' },
+  { path: 'posts', label: '信息发布', icon: '📢' },
+  { path: 'polls', label: '投票管理', icon: '🗳️' },
   { path: 'email', label: '邮件通知', icon: '✉️' },
   { path: 'zhtj', label: '智慧团建', icon: '🔗' },
   { path: 'settings', label: '系统设置', icon: '⚙️' },
@@ -208,7 +210,7 @@ async function route() {
   const [path, param] = hash.split('/');
   const page = path || 'dashboard';
   renderNav(page);
-  const titles = { dashboard: '仪表盘', members: '团员管理', portraits: '团员画像', branch: '团支部数字画像', fees: '团费收缴', activities: '活动管理', email: '邮件通知', zhtj: '智慧团建', settings: '系统设置' };
+  const titles = { dashboard: '仪表盘', members: '团员管理', portraits: '团员画像', branch: '团支部数字画像', fees: '团费收缴', activities: '活动管理', posts: '信息发布', polls: '投票管理', email: '邮件通知', zhtj: '智慧团建', settings: '系统设置' };
   $('#pageTitle').textContent = titles[page] || '';
   const content = $('#content');
   content.innerHTML = '<div class="loading">加载中…</div>';
@@ -219,6 +221,8 @@ async function route() {
     else if (page === 'branch') await renderBranch(content);
     else if (page === 'fees') await renderFees(content, param);
     else if (page === 'activities') await renderActivities(content);
+    else if (page === 'posts') await renderPosts(content);
+    else if (page === 'polls') await renderPolls(content);
     else if (page === 'email') await renderEmail(content);
     else if (page === 'zhtj') await renderZhtj(content);
     else if (page === 'settings') await renderSettings(content);
@@ -1005,6 +1009,206 @@ async function saveSettings(showToastMsg = true) {
     await api('PUT', 'settings', body);
     if (showToastMsg) { toast('设置已保存'); route(); }
   } catch (e) { toast(e.message, 'err'); }
+}
+
+/* ============================ 信息发布 ============================ */
+const POST_CATEGORIES = ['通知', '公示', '活动', '学习', '其他'];
+
+async function renderPosts(c) {
+  const { posts } = await api('GET', 'posts');
+  c.innerHTML = `
+    <div class="toolbar">
+      <span class="muted">共 ${posts.length} 篇内容，发布后团员可在网页端查看</span>
+      <div class="spacer"></div>
+      <button class="btn btn-primary" id="newPost">＋ 新建信息</button>
+    </div>
+    <div id="postList">${posts.length ? posts.map(postCardHtml).join('') : '<div class="empty">暂无内容，点击「新建信息」创建</div>'}</div>`;
+  $('#newPost').addEventListener('click', () => openPostModal());
+  $$('#postList [data-edit]').forEach((b) => b.addEventListener('click', () => openPostModal(Number(b.dataset.edit))));
+  $$('#postList [data-pub]').forEach((b) => b.addEventListener('click', async () => { await api('POST', `posts/${b.dataset.pub}/publish`); toast('已发布'); route(); }));
+  $$('#postList [data-unpub]').forEach((b) => b.addEventListener('click', async () => { await api('POST', `posts/${b.dataset.unpub}/unpublish`); toast('已下架'); route(); }));
+  $$('#postList [data-del]').forEach((b) => b.addEventListener('click', async () => {
+    if (!confirm('确定删除该内容？')) return;
+    await api('DELETE', 'posts/' + b.dataset.del); toast('已删除'); route();
+  }));
+}
+
+function postCardHtml(p) {
+  const st = p.status === 'published' ? '<span class="badge ok">已发布</span>' : '<span class="badge no">草稿</span>';
+  return `<div class="activity-card">
+    <div class="top"><div>
+      <div class="title">${p.is_pinned ? '📌 ' : ''}${esc(p.title)} ${st}</div>
+      <div class="info">${esc(p.category || '通知')} · ${p.published_at ? '发布于 ' + esc(fmtDate(p.published_at)) : '未发布'}</div>
+    </div>
+    <div class="ops">
+      <button class="btn btn-ghost btn-sm" data-edit="${p.id}">编辑</button>
+      ${p.status === 'published' ? `<button class="btn btn-ghost btn-sm" data-unpub="${p.id}">下架</button>` : `<button class="btn btn-ghost btn-sm" data-pub="${p.id}">发布</button>`}
+      <button class="btn btn-danger btn-sm" data-del="${p.id}">删除</button>
+    </div></div>
+  </div>`;
+}
+
+async function openPostModal(id) {
+  let post = null;
+  if (id) {
+    const { posts } = await api('GET', 'posts');
+    post = posts.find((x) => x.id === id);
+  }
+  openModal(modalHtml(id ? '编辑信息' : '新建信息', `
+    <form class="form-grid">
+      <div class="form-item full"><label>标题 *</label><input type="text" id="pTitle" value="${esc(post?.title || '')}"></div>
+      <div class="form-item"><label>分类</label><select id="pCategory">${POST_CATEGORIES.map((t) => `<option ${post?.category === t ? 'selected' : ''}>${t}</option>`).join('')}</select></div>
+      <div class="form-item"><label class="checkbox-wrap" style="margin-top:24px"><input type="checkbox" id="pPinned" ${post?.is_pinned ? 'checked' : ''}> 置顶</label></div>
+      <div class="form-item full"><label>正文</label><textarea id="pContent" rows="10">${esc(post?.content || '')}</textarea></div>
+    </form>`,
+    `<button class="btn btn-ghost" onclick="closeModal()">取消</button>
+     <button class="btn btn-primary" id="savePost">保存</button>`));
+  $('#savePost').addEventListener('click', async () => {
+    const body = { title: $('#pTitle').value.trim(), category: $('#pCategory').value, content: $('#pContent').value, is_pinned: $('#pPinned').checked };
+    if (!body.title) { toast('请填写标题', 'err'); return; }
+    try {
+      if (id) await api('PUT', 'posts/' + id, body); else await api('POST', 'posts', body);
+      toast('保存成功'); closeModal(); route();
+    } catch (e) { toast(e.message, 'err'); }
+  });
+}
+
+/* ============================ 投票管理 ============================ */
+const POLL_VIS = { always: '实时可见', after_end: '结束后可见', never: '仅管理员' };
+
+function pollStatusTag(s) {
+  const m = { draft: ['草稿', 'no'], upcoming: ['未开始', 'no'], open: ['进行中', 'ok'], closed: ['已结束', 'no'] };
+  const [label, cls] = m[s] || ['未知', 'no'];
+  return `<span class="badge ${cls}">${label}</span>`;
+}
+
+async function renderPolls(c) {
+  const { polls } = await api('GET', 'polls');
+  c.innerHTML = `
+    <div class="toolbar">
+      <span class="muted">共 ${polls.length} 个投票，发布后团员以「姓名+学号」登录参与</span>
+      <div class="spacer"></div>
+      <button class="btn btn-primary" id="newPoll">＋ 新建投票</button>
+    </div>
+    <div id="pollList">${polls.length ? polls.map(pollCardHtml).join('') : '<div class="empty">暂无投票，点击「新建投票」创建</div>'}</div>`;
+  $('#newPoll').addEventListener('click', () => openPollModal());
+  $$('#pollList [data-edit]').forEach((b) => b.addEventListener('click', () => openPollModal(Number(b.dataset.edit))));
+  $$('#pollList [data-res]').forEach((b) => b.addEventListener('click', () => showPollResults(Number(b.dataset.res))));
+  $$('#pollList [data-pub]').forEach((b) => b.addEventListener('click', async () => { await api('POST', `polls/${b.dataset.pub}/publish`); toast('已发布'); route(); }));
+  $$('#pollList [data-close]').forEach((b) => b.addEventListener('click', async () => { if (!confirm('确定关闭该投票？')) return; await api('POST', `polls/${b.dataset.close}/close`); toast('已关闭'); route(); }));
+  $$('#pollList [data-del]').forEach((b) => b.addEventListener('click', async () => {
+    if (!confirm('确定删除该投票？')) return;
+    await api('DELETE', 'polls/' + b.dataset.del); toast('已删除'); route();
+  }));
+}
+
+function pollCardHtml(p) {
+  const typeTag = p.poll_type === 'multiple' ? `多选${p.multi_max > 1 ? '（最多 ' + p.multi_max + ' 项）' : ''}` : '单选';
+  const anon = p.is_anonymous ? '匿名' : '实名';
+  return `<div class="activity-card">
+    <div class="top"><div>
+      <div class="title">${esc(p.title)} ${pollStatusTag(p.effective_status)}</div>
+      <div class="info"><span class="badge">${typeTag}</span> <span class="badge">${anon}</span> ${p.start_at ? '开始 ' + esc(fmtDate(p.start_at)) : '即时'} ${p.end_at ? '· 截止 ' + esc(fmtDate(p.end_at)) : ''}</div>
+    </div>
+    <div class="ops">
+      <button class="btn btn-ghost btn-sm" data-edit="${p.id}">编辑</button>
+      <button class="btn btn-ghost btn-sm" data-res="${p.id}">📊 结果</button>
+      ${p.status === 'published' ? `<button class="btn btn-ghost btn-sm" data-close="${p.id}">关闭</button>` : `<button class="btn btn-ghost btn-sm" data-pub="${p.id}">发布</button>`}
+      <button class="btn btn-danger btn-sm" data-del="${p.id}">删除</button>
+    </div></div>
+  </div>`;
+}
+
+async function openPollModal(id) {
+  let poll = null;
+  if (id) {
+    const { poll: p } = await api('GET', 'polls/' + id);
+    poll = p;
+  }
+  const options = (poll && poll.options && poll.options.length) ? poll.options : [{ text: '' }, { text: '' }];
+  openModal(modalHtml(id ? '编辑投票' : '新建投票', `
+    <form class="form-grid">
+      <div class="form-item full"><label>投票标题 *</label><input type="text" id="vTitle" value="${esc(poll?.title || '')}"></div>
+      <div class="form-item full"><label>投票说明</label><textarea id="vDesc" rows="3">${esc(poll?.description || '')}</textarea></div>
+      <div class="form-item"><label>投票类型</label><select id="vType">
+        <option value="single" ${poll?.poll_type !== 'multiple' ? 'selected' : ''}>单选</option>
+        <option value="multiple" ${poll?.poll_type === 'multiple' ? 'selected' : ''}>多选</option>
+      </select></div>
+      <div class="form-item"><label>多选上限</label><input type="number" id="vMax" min="1" value="${poll?.multi_max || 1}"></div>
+      <div class="form-item"><label>结果可见性</label><select id="vVis">${Object.entries(POLL_VIS).map(([k, v]) => `<option value="${k}" ${(poll?.result_visibility || 'always') === k ? 'selected' : ''}>${v}</option>`).join('')}</select></div>
+      <div class="form-item"><label>开始时间</label><input type="datetime-local" id="vStart" value="${esc(poll?.start_at || '')}"></div>
+      <div class="form-item"><label>截止时间</label><input type="datetime-local" id="vEnd" value="${esc(poll?.end_at || '')}"></div>
+      <div class="form-item full">
+        <label class="checkbox-wrap"><input type="checkbox" id="vAnon" ${poll?.is_anonymous ? 'checked' : ''}> 匿名投票（不记录投票人）</label>
+        <label class="checkbox-wrap" style="margin-left:16px"><input type="checkbox" id="vChange" ${poll?.allow_change_vote ? 'checked' : ''}> 允许改票</label>
+      </div>
+      <div class="form-item full"><label>选项（至少 2 个）</label>
+        <div id="optList">${options.map((o, i) => `<div class="opt-row" style="display:flex;gap:8px;margin-bottom:6px"><input class="optText" type="text" value="${esc(o.text || '')}" placeholder="选项 ${i + 1}"><button type="button" class="btn btn-ghost btn-sm opt-del">×</button></div>`).join('')}</div>
+        <button type="button" class="btn btn-ghost btn-sm" id="addOpt">＋ 添加选项</button>
+      </div>
+    </form>`,
+    `<button class="btn btn-ghost" onclick="closeModal()">取消</button>
+     <button class="btn btn-primary" id="savePoll">保存</button>`));
+
+  $('#addOpt').addEventListener('click', () => {
+    const row = document.createElement('div');
+    row.className = 'opt-row';
+    row.style.cssText = 'display:flex;gap:8px;margin-bottom:6px';
+    row.innerHTML = `<input class="optText" type="text" placeholder="选项 ${$$('#optList .opt-row').length + 1}"><button type="button" class="btn btn-ghost btn-sm opt-del">×</button>`;
+    $('#optList').appendChild(row);
+  });
+  $('#optList').addEventListener('click', (e) => {
+    if (e.target.classList.contains('opt-del')) {
+      if ($$('#optList .opt-row').length > 2) e.target.closest('.opt-row').remove();
+      else toast('至少保留 2 个选项', 'err');
+    }
+  });
+
+  $('#savePoll').addEventListener('click', async () => {
+    const opts = $$('#optList .optText').map((x) => ({ text: x.value.trim() })).filter((o) => o.text);
+    const body = {
+      title: $('#vTitle').value.trim(),
+      description: $('#vDesc').value,
+      poll_type: $('#vType').value,
+      multi_max: Number($('#vMax').value) || 1,
+      result_visibility: $('#vVis').value,
+      is_anonymous: $('#vAnon').checked,
+      allow_change_vote: $('#vChange').checked,
+      start_at: $('#vStart').value || null,
+      end_at: $('#vEnd').value || null,
+      options: opts,
+    };
+    if (!body.title) { toast('请填写投票标题', 'err'); return; }
+    if (opts.length < 2) { toast('至少填写 2 个选项', 'err'); return; }
+    try {
+      if (id) await api('PUT', 'polls/' + id, body); else await api('POST', 'polls', body);
+      toast('保存成功'); closeModal(); route();
+    } catch (e) { toast(e.message, 'err'); }
+  });
+}
+
+async function showPollResults(id) {
+  const { poll, participants, total_eligible, rate, counts, voters } = await api('GET', 'polls/' + id + '/results');
+  const optMap = {};
+  (poll.options || []).forEach((o) => { optMap[o.id] = o.text; });
+  const total = (poll.options || []).reduce((s, o) => s + (counts?.[o.id] || 0), 0);
+  const bars = (poll.options || []).map((o) => {
+    const c = counts?.[o.id] || 0;
+    const pct = total ? Math.round((c / total) * 1000) / 10 : 0;
+    return `<div style="margin-bottom:12px">
+      <div class="info" style="display:flex;justify-content:space-between"><span>${esc(o.text)}</span><span>${c} 票 · ${pct}%</span></div>
+      <div style="background:#eef0f3;height:10px;border-radius:6px;overflow:hidden"><div style="width:${pct}%;height:10px;background:#c8102e"></div></div>
+    </div>`;
+  }).join('');
+  const voterDetail = (voters && !poll.is_anonymous)
+    ? `<div class="info mt">投票人明细：<br>${voters.map((v) => `<span class="tag">${esc(v.name)}（${esc(v.student_no)}）→ ${esc(optMap[v.option_id] || v.option_id)}</span>`).join(' ')}</div>`
+    : '';
+  openModal(modalHtml(`投票结果：${poll.title}`, `
+    <div class="info mb">参与 ${participants} 人 · 应参与 ${total_eligible} 人 · 参与率 ${rate}%</div>
+    ${bars}
+    ${voterDetail}
+    <div class="info mt"><a class="btn btn-ghost btn-sm" href="/api/polls/${id}/export" download>⬇ 导出 CSV</a></div>
+  `));
 }
 
 /* ============================ 启动 ============================ */
