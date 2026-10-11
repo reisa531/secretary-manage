@@ -116,4 +116,4 @@ function buildSummaryText(stats) {
   ].join('\n');
 }
 
-module.exports = { computeBranchStats, computeTopTags, countMap, parseTags };
+export { computeBranchStats, computeTopTags, countMap, parseTags };

@@ -178,4 +178,4 @@ async function generateBranchGuidance(stats, settings) {
   return { ...json, raw: content };
 }
 
-module.exports = { getAIConfig, chatCompletion, parseJson, generateMemberPortrait, generateBranchGuidance, fallbackPortrait };
+export { getAIConfig, chatCompletion, parseJson, generateMemberPortrait, generateBranchGuidance, fallbackPortrait };

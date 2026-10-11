@@ -1,0 +1,23 @@
+{
+  "name": "secretary-manage-cloud",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "团支部管理平台云端服务：API + 公开站点（信息发布 / 投票）",
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "db:migrate": "node db/migrate.mjs",
+    "db:migrate:sqlite": "node db/migrate-sqlite.mjs"
+  },
+  "dependencies": {
+    "next": "^15.3.0",
+    "pg": "^8.13.1",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0"
+  },
+  "engines": {
+    "node": ">=22.5.0"
+  }
+}

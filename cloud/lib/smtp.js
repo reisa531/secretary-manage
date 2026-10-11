@@ -4,8 +4,8 @@
  * 支持：SMTP(25)、SMTP+STARTTLS(587)、SMTPS(465 隐式TLS)、AUTH LOGIN / AUTH PLAIN、匿名中继。
  * 用于"一键发布活动通知"等邮件功能，适配用户提供的任意邮箱（QQ/163/Gmail/企业邮箱等）。
  */
-const net = require('node:net');
-const tls = require('node:tls');
+import net from 'node:net';
+import tls from 'node:tls';
 
 class SMTPError extends Error {}
 
@@ -227,4 +227,4 @@ async function sendMail(smtpConfig, mail) {
   }
 }
 
-module.exports = { SMTPClient, sendMail };
+export { SMTPClient, sendMail };

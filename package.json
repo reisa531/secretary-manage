@@ -1,13 +1,11 @@
 {
   "name": "secretary-manage",
   "version": "1.0.0",
-  "description": "团支部管理平台 - 团员管理、智慧团建对接、团员画像、团支部数字画像、团费收缴、邮件通知",
+  "description": "团支部管理平台 - 云端 API + 公开站点 + Electron 瘦客户端（管理端）",
   "type": "commonjs",
   "main": "electron/main.js",
-  "author": "SecretaryManage <admin@secretary.local>",
+  "author": "SecretaryManage",
   "scripts": {
-    "start": "node server.js",
-    "dev": "node server.js",
     "electron": "electron .",
     "dist": "electron-builder --win nsis"
   },
@@ -27,8 +25,6 @@
       "output": "dist"
     },
     "files": [
-      "server.js",
-      "lib/**/*",
       "public/**/*",
       "electron/**/*",
       "package.json"
