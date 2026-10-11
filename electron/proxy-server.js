@@ -8,6 +8,7 @@
 const http = require('node:http');
 const fs = require('node:fs');
 const path = require('node:path');
+const { net } = require('electron');
 
 const MIME = {
   '.html': 'text/html; charset=utf-8',
@@ -37,7 +38,7 @@ async function proxyToCloud(req, res, apiBase) {
   const body = (req.method === 'GET' || req.method === 'HEAD') ? undefined : await readBody(req);
 
   try {
-    const resp = await fetch(target, { method: req.method, headers, body, redirect: 'manual' });
+    const resp = await net.fetch(target, { method: req.method, headers, body, redirect: 'manual' });
     const respHeaders = {};
     resp.headers.forEach((v, k) => { respHeaders[k] = v; });
     if (typeof resp.headers.getSetCookie === 'function') {
