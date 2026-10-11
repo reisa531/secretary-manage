@@ -6,6 +6,10 @@
 
 ## [Unreleased]
 
+## [1.1.1] - 2026-10-11
+### Fixed
+- 修复客户端代理请求报 `net::ERR_FAILED`：只转发必要请求头（避免 Chromium 拒绝浏览器专属头），并在转发响应时去除 `content-encoding/content-length/transfer-encoding`（net.fetch 已自动解压，避免下游重复解压失败）。
+
 ## [1.1.0] - 2026-10-11
 ### Changed
 - 客户端启动时校验云端 API 地址（apiBase）；未配置或不可用时弹出窗口要求输入，保存后自动重新校验。

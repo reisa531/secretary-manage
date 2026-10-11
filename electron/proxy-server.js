@@ -31,20 +31,25 @@ function readBody(req) {
 
 async function proxyToCloud(req, res, apiBase) {
   const target = String(apiBase).replace(/\/+$/, '') + req.url;
-  const headers = { ...req.headers };
-  delete headers.host;
-  delete headers.connection;
-  delete headers['content-length'];
+  // 只转发必要请求头：Chromium 的 net.fetch 会拒绝 sec-fetch-* / sec-ch-ua 等浏览器专属头
+  const headers = {};
+  for (const h of ['cookie', 'content-type', 'authorization', 'accept']) {
+    if (req.headers[h]) headers[h] = req.headers[h];
+  }
   const body = (req.method === 'GET' || req.method === 'HEAD') ? undefined : await readBody(req);
 
   try {
-    const resp = await net.fetch(target, { method: req.method, headers, body, redirect: 'manual' });
+    const resp = await net.fetch(target, { method: req.method, headers, body, redirect: 'follow' });
     const respHeaders = {};
     resp.headers.forEach((v, k) => { respHeaders[k] = v; });
     if (typeof resp.headers.getSetCookie === 'function') {
       const cookies = resp.headers.getSetCookie();
       if (cookies.length) respHeaders['set-cookie'] = cookies;
     }
+    // net.fetch 已自动解压响应体，需去掉编码/长度头，避免下游再次解压导致失败
+    delete respHeaders['content-encoding'];
+    delete respHeaders['content-length'];
+    delete respHeaders['transfer-encoding'];
     res.writeHead(resp.status, respHeaders);
     res.end(Buffer.from(await resp.arrayBuffer()));
   } catch (e) {
