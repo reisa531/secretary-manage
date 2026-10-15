@@ -106,7 +106,7 @@ export default function PollPage({ params }) {
       {!me ? (
         <div className="card">
           <h2>请先认证身份参与投票</h2>
-          <p className="hint">输入你的姓名与学号完成认证（需在团员库中）</p>
+          <p className="hint">输入你的姓名与学号完成认证</p>
           <form onSubmit={doLogin}>
             <div className="field"><label>姓名</label><input type="text" value={name} onChange={(e) => setName(e.target.value)} placeholder="姓名" /></div>
             <div className="field"><label>学号</label><input type="text" value={studentNo} onChange={(e) => setStudentNo(e.target.value)} placeholder="学号" /></div>
