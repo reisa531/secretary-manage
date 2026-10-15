@@ -1,4 +1,5 @@
 import './globals.css';
+import { Analytics } from "@vercel/analytics/next"
 
 export const metadata = {
   title: '团支部管理平台',
