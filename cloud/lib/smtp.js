@@ -169,6 +169,8 @@ class SMTPClient {
     await this._auth();
 
     await this._command('MAIL FROM:<' + this.from + '>', '2');
+    // 任一收件人被拒即整体失败：保持原有行为，宁可整封不发也不做部分投递。
+    // 出错时 _command 抛出 `服务器返回错误 [550] User not found: xxx`，据此定位坏地址。
     for (const rcpt of to) {
       await this._command('RCPT TO:<' + rcpt + '>', '2');
     }

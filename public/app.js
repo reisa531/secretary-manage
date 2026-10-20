@@ -1104,7 +1104,7 @@ async function renderPolls(c) {
   $$('#pollList [data-edit]').forEach((b) => b.addEventListener('click', () => openPollModal(Number(b.dataset.edit))));
   $$('#pollList [data-res]').forEach((b) => b.addEventListener('click', () => showPollResults(Number(b.dataset.res))));
   $$('#pollList [data-mail]').forEach((b) => b.addEventListener('click', async () => {
-    if (!confirm('确定将本次投票通过邮件发送给全体团员？')) return;
+    if (!confirm('确定将本次投票通过邮件发送给参与范围内的成员？')) return;
     const btn = b; const old = btn.innerHTML; btn.disabled = true; btn.innerHTML = '<span class="spin">↻</span> 发送中…';
     try {
       const r = await api('POST', `polls/${btn.dataset.mail}/notify`);

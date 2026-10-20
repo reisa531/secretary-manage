@@ -36,6 +36,13 @@ export default function PollPage({ params }) {
 
   useEffect(() => { refresh(); }, [id]);
 
+  // 已投票后能否改票：仅当管理员开启 allow_change_vote、仍在开放期、且本人在范围内。
+  // 声明在使用它的 toggle/doVote 之前，避免依赖函数提升顺序。
+  const pollData = poll && poll.poll;
+  const effectiveStatus = pollData ? pollData.effective_status : null;
+  const canChange = me?.type === 'member' && poll?.in_scope !== false && effectiveStatus === 'open'
+    && (!poll?.has_voted || !!pollData?.allow_change_vote);
+
   async function doLogin(e) {
     e.preventDefault();
     setErr('');
@@ -53,6 +60,7 @@ export default function PollPage({ params }) {
 
   function toggle(optId) {
     if (!poll || poll.poll.effective_status !== 'open') return;
+    if (!canChange) return;
     if (poll.poll.poll_type === 'single') setSelected([optId]);
     else {
       setSelected((prev) => prev.includes(optId) ? prev.filter((x) => x !== optId) : [...prev, optId]);
@@ -145,7 +153,7 @@ export default function PollPage({ params }) {
             const checked = selected.includes(o.id);
             const cnt = counts[o.id] || 0;
             const pct = totalVotes ? Math.round((cnt / totalVotes) * 100) : 0;
-            const canVote = me?.type === 'member' && poll.in_scope !== false && st === 'open' && !poll.has_voted;
+            const canVote = canChange;
             return (
               <div key={o.id}>
                 <div className="option-row" onClick={() => toggle(o.id)} style={!canVote ? { cursor: 'default' } : {}}>
@@ -157,13 +165,16 @@ export default function PollPage({ params }) {
               </div>
             );
           })}
-          {st === 'open' && me?.type === 'member' && poll.in_scope !== false && !poll.has_voted && (
+          {st === 'open' && me?.type === 'member' && poll.in_scope !== false && canChange && (
             <>
-              <button className="btn" onClick={doVote} disabled={submitting}>提交投票</button>
+              <button className="btn" onClick={doVote} disabled={submitting}>
+                {poll.has_voted ? '修改投票' : '提交投票'}
+              </button>
               <div className="err">{err}</div>
             </>
           )}
-          {poll.has_voted && <p className="hint">你已参与本次投票{p.allow_change_vote ? '，可修改后重新提交' : ''}</p>}
+          {poll.has_voted && !p.allow_change_vote && <p className="hint">你已参与本次投票，管理员未开放改票，结果不可修改</p>}
+          {poll.has_voted && p.allow_change_vote && <p className="hint">你已参与本次投票，可在截止前重新选择并提交以覆盖原选择</p>}
         </div>
       )}
 

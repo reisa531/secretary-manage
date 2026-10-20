@@ -749,18 +749,20 @@ async function pollResults(pollId) {
 }
 
 /* ---- 投票邮件发布 ---- */
+// 邮件只做「有票可投」的提醒，不暴露说明全文、选项、起止时间等详情，避免绕过页面直接看到内容
+function pollScopeText(poll) {
+  const statuses = scopeStatusesOf(poll);
+  if (poll.scope_type === 'custom') return '指定成员';
+  if (statuses.length) return statuses.map((s) => s || '未填写').join('、');
+  return '全体成员';
+}
+
 function pollEmailHtml(poll, orgName, pollUrl) {
-  const opts = (poll.options || []).map((o) => `<li style="margin:4px 0;">${escapeHtml(o.text)}</li>`).join('');
-  const typeText = poll.poll_type === 'multiple' ? `多选（最多 ${poll.multi_max} 项）` : '单选';
   return `<!DOCTYPE html><html><body style="font-family:-apple-system,'Segoe UI',Roboto,'PingFang SC','Microsoft YaHei',sans-serif;color:#222;line-height:1.7;max-width:640px;margin:0 auto;padding:24px;">
   <div style="background:#c8102e;color:#fff;padding:16px 20px;border-radius:8px 8px 0 0;"><h2 style="margin:0;font-size:18px;">【投票】${escapeHtml(poll.title)}</h2></div>
   <div style="border:1px solid #eee;border-top:none;padding:20px;border-radius:0 0 8px 8px;">
     <p>各位团员：</p><p>团支部发起了新的投票，请及时参与。</p>
-    ${poll.description ? `<p>${escapeHtml(poll.description).replace(/\n/g, '<br>')}</p>` : ''}
-    <p><strong>投票类型：</strong>${typeText}${poll.is_anonymous ? ' · 匿名' : ' · 实名'}</p>
-    ${poll.start_at ? `<p><strong>开始时间：</strong>${escapeHtml(String(poll.start_at))}</p>` : ''}
-    ${poll.end_at ? `<p><strong>截止时间：</strong>${escapeHtml(String(poll.end_at))}</p>` : ''}
-    <p><strong>选项：</strong></p><ul>${opts}</ul>
+    <p><strong>参与范围：</strong>${escapeHtml(pollScopeText(poll))}</p>
     <p style="margin-top:20px;"><a href="${escapeHtml(pollUrl)}" style="display:inline-block;background:#c8102e;color:#fff;text-decoration:none;padding:10px 20px;border-radius:8px;">前往投票</a></p>
     <p style="color:#888;font-size:12px;">或访问：${escapeHtml(pollUrl)}</p>
     <p style="color:#888;font-size:12px;margin-top:24px;">—— 此邮件由「${escapeHtml(orgName)}」通过团支部管理平台自动发送</p>
