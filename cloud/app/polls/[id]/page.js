@@ -85,6 +85,7 @@ export default function PollPage({ params }) {
 
   const p = poll.poll;
   const st = p.effective_status;
+  const denied = poll.denied_reason || (poll.in_scope === false ? '对不起，你没有权限参与本次投票' : '');
   const counts = poll.counts || {};
   const totalVotes = Object.values(counts).reduce((a, b) => a + b, 0) || 0;
   const showResults = !!poll.counts;
@@ -93,13 +94,15 @@ export default function PollPage({ params }) {
     <main className="container">
       <div className="card">
         <h1 style={{ margin: '0 0 8px' }}>{p.title} <span className={`badge ${STATUS_CLASS[st]}`}>{STATUS_LABEL[st]}</span></h1>
-        {p.description ? <div className="hint desc-box" style={{ marginBottom: 8 }}>{p.description}</div> : null}
-        <div className="meta">
-          {p.poll_type === 'single' ? '单选' : `多选（最多 ${p.multi_max} 项）`}
-          {p.is_anonymous ? ' · 匿名' : ' · 实名'}
-          <span style={{ marginLeft: 8 }}>开始 {fmt(p.start_at)} · 结束 {fmt(p.end_at)}</span>
-          {typeof poll.participants === 'number' ? <span style={{ marginLeft: 8 }}>已参与 {poll.participants} 人</span> : null}
-        </div>
+        {!denied && p.description ? <div className="hint desc-box" style={{ marginBottom: 8 }}>{p.description}</div> : null}
+        {!denied && (
+          <div className="meta">
+            {p.poll_type === 'single' ? '单选' : `多选（最多 ${p.multi_max} 项）`}
+            {p.is_anonymous ? ' · 匿名' : ' · 实名'}
+            <span style={{ marginLeft: 8 }}>开始 {fmt(p.start_at)} · 结束 {fmt(p.end_at)}</span>
+            {typeof poll.participants === 'number' ? <span style={{ marginLeft: 8 }}>已参与 {poll.participants} 人</span> : null}
+          </div>
+        )}
       </div>
 
       {/* 登录态 */}
@@ -125,15 +128,24 @@ export default function PollPage({ params }) {
         <div className="card"><span>当前为管理端登录态</span></div>
       )}
 
+      {/* 不在参与范围：只显示拒绝提示，不渲染选项 */}
+      {denied && me?.type === 'member' ? (
+        <div className="card">
+          <h2>无法参与</h2>
+          <p className="err" style={{ fontSize: 15 }}>{denied}</p>
+          <p className="hint">本次投票已设置参与范围，你的身份或账号不在此范围内。如需参与，请联系团支书确认。</p>
+        </div>
+      ) : null}
+
       {/* 选项 */}
-      {p.options && p.options.length > 0 && (
+      {!denied && p.options && p.options.length > 0 && (
         <div className="card">
           <h2>选项</h2>
           {p.options.map((o) => {
             const checked = selected.includes(o.id);
             const cnt = counts[o.id] || 0;
             const pct = totalVotes ? Math.round((cnt / totalVotes) * 100) : 0;
-            const canVote = me?.type === 'member' && st === 'open' && !poll.has_voted;
+            const canVote = me?.type === 'member' && poll.in_scope !== false && st === 'open' && !poll.has_voted;
             return (
               <div key={o.id}>
                 <div className="option-row" onClick={() => toggle(o.id)} style={!canVote ? { cursor: 'default' } : {}}>
@@ -145,7 +157,7 @@ export default function PollPage({ params }) {
               </div>
             );
           })}
-          {st === 'open' && me?.type === 'member' && !poll.has_voted && (
+          {st === 'open' && me?.type === 'member' && poll.in_scope !== false && !poll.has_voted && (
             <>
               <button className="btn" onClick={doVote} disabled={submitting}>提交投票</button>
               <div className="err">{err}</div>

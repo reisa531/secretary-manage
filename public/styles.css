@@ -221,6 +221,16 @@ textarea { resize: vertical; min-height: 80px; }
 .checkbox-wrap { display: flex; align-items: center; gap: 6px; padding: 5px 10px; border: 1px solid var(--border); border-radius: 8px; cursor: pointer; font-size: 13px; }
 .checkbox-wrap input { accent-color: var(--primary); }
 
+/* ---------- 投票参与范围 ---------- */
+.scope-box { border: 1px solid var(--border); border-radius: 10px; padding: 12px 14px; background: #fafbfc; }
+.scope-modes { display: flex; flex-wrap: wrap; gap: 8px; margin: 6px 0; }
+.scope-block { margin-top: 10px; }
+#scopeStatusList { display: flex; flex-wrap: wrap; gap: 8px; }
+.scope-member-list { max-height: 220px; overflow-y: auto; border: 1px solid var(--border); border-radius: 8px; background: #fff; padding: 6px; display: flex; flex-direction: column; gap: 2px; }
+.scope-member { display: flex; align-items: center; gap: 8px; padding: 5px 8px; border-radius: 6px; font-size: 13px; cursor: pointer; }
+.scope-member:hover { background: #f2f4f7; }
+.scope-member input { accent-color: var(--primary); }
+
 /* ---------- 团费收缴 ---------- */
 .fee-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 14px; }
 .fee-card { background: #fff; border-radius: var(--radius); box-shadow: var(--shadow); padding: 16px 18px; display: block; color: var(--text); transition: .15s; border: 1px solid transparent; }

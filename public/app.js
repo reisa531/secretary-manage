@@ -1075,6 +1075,15 @@ async function openPostModal(id) {
 
 /* ============================ 投票管理 ============================ */
 const POLL_VIS = { always: '实时可见', after_end: '结束后可见', never: '仅管理员' };
+const SCOPE_LABEL = { all: '全体成员', status: '按标签', custom: '指定成员' };
+
+function scopeSummary(p) {
+  if (!p || p.scope_type === 'all' || !p.scope_type) {
+    return Array.isArray(p?.scope_statuses) && p.scope_statuses.length ? `按标签：${p.scope_statuses.map((s) => s || '(未填写)').join('、')}` : '全体成员';
+  }
+  if (p.scope_type === 'custom') return '指定成员';
+  return '按标签';
+}
 
 function pollStatusTag(s) {
   const m = { draft: ['草稿', 'no'], upcoming: ['未开始', 'no'], open: ['进行中', 'ok'], closed: ['已结束', 'no'] };
@@ -1117,7 +1126,7 @@ function pollCardHtml(p) {
   return `<div class="activity-card">
     <div class="top"><div>
       <div class="title">${esc(p.title)} ${pollStatusTag(p.effective_status)}</div>
-      <div class="info"><span class="badge">${typeTag}</span> <span class="badge">${anon}</span> ${p.start_at ? '开始 ' + esc(fmtDate(p.start_at)) : '即时'} ${p.end_at ? '· 截止 ' + esc(fmtDate(p.end_at)) : ''}</div>
+      <div class="info"><span class="badge">${typeTag}</span> <span class="badge">${anon}</span> <span class="badge">${esc(scopeSummary(p))}</span> ${p.start_at ? '开始 ' + esc(fmtDate(p.start_at)) : '即时'} ${p.end_at ? '· 截止 ' + esc(fmtDate(p.end_at)) : ''}</div>
     </div>
     <div class="ops">
       <button class="btn btn-ghost btn-sm" data-edit="${p.id}">编辑</button>
@@ -1135,6 +1144,8 @@ async function openPollModal(id) {
     const { poll: p } = await api('GET', 'polls/' + id);
     poll = p;
   }
+  const scopeOpts = await api('GET', 'polls/scope-options');
+  const targetIds = id ? ((await api('GET', 'polls/' + id + '/scope-targets')).member_ids || []) : [];
   const options = (poll && poll.options && poll.options.length) ? poll.options : [{ text: '' }, { text: '' }];
   openModal(modalHtml(id ? '编辑投票' : '新建投票', `
     <form class="form-grid">
@@ -1152,6 +1163,22 @@ async function openPollModal(id) {
         <label class="checkbox-wrap"><input type="checkbox" id="vAnon" ${poll?.is_anonymous ? 'checked' : ''}> 匿名投票（不记录投票人）</label>
         <label class="checkbox-wrap" style="margin-left:16px"><input type="checkbox" id="vChange" ${poll?.allow_change_vote ? 'checked' : ''}> 允许改票</label>
       </div>
+      <div class="form-item full scope-box">
+        <label>参与范围 *</label>
+        <div class="scope-modes">
+          ${Object.entries(SCOPE_LABEL).map(([k, v]) => `<label class="checkbox-wrap"><input type="radio" name="vScopeType" value="${k}" ${(poll?.scope_type || 'all') === k ? 'checked' : ''}> ${v}</label>`).join('')}
+        </div>
+        <div id="scopeStatusWrap" class="scope-block" style="display:none">
+          <div class="muted mb">按政治面貌标签筛选（可多选，不选＝不限标签）</div>
+          <div id="scopeStatusList">${scopeOpts.statuses.map((s) => `<label class="checkbox-wrap"><input type="checkbox" class="scopeStatus" value="${esc(s.value)}" ${((poll?.scope_statuses || []).includes(s.value)) ? 'checked' : ''}> ${esc(s.label)}（${s.count} 人）</label>`).join('') || '<span class="muted">成员库暂无数据</span>'}</div>
+        </div>
+        <div id="scopeCustomWrap" class="scope-block" style="display:none">
+          <div class="muted mb">勾选可参与本次投票的同学（共 ${scopeOpts.members.length} 人）</div>
+          <input type="text" id="scopeSearch" placeholder="搜索姓名 / 学号 / 小组" style="margin-bottom:8px">
+          <div id="scopeMemberList" class="scope-member-list"></div>
+          <div class="muted mt">已选 <span id="scopeCount">0</span> 人 <button type="button" class="btn btn-ghost btn-sm" id="scopeClear">清空</button></div>
+        </div>
+      </div>
       <div class="form-item full"><label>选项（至少 2 个）</label>
         <div id="optList">${options.map((o, i) => `<div class="opt-row" style="display:flex;gap:8px;margin-bottom:6px"><input class="optText" type="text" value="${esc(o.text || '')}" placeholder="选项 ${i + 1}"><button type="button" class="btn btn-ghost btn-sm opt-del">×</button></div>`).join('')}</div>
         <button type="button" class="btn btn-ghost btn-sm" id="addOpt">＋ 添加选项</button>
@@ -1159,6 +1186,33 @@ async function openPollModal(id) {
     </form>`,
     `<button class="btn btn-ghost" onclick="closeModal()">取消</button>
      <button class="btn btn-primary" id="savePoll">保存</button>`));
+
+  /* ---- 参与范围交互 ---- */
+  const picked = new Set(targetIds.map(Number));
+  const renderMembers = (kw = '') => {
+    const q = kw.trim().toLowerCase();
+    const list = scopeOpts.members.filter((m) => !q || [m.name, m.student_no, m.org_name, m.political_status].some((x) => String(x || '').toLowerCase().includes(q)));
+    $('#scopeMemberList').innerHTML = list.length
+      ? list.map((m) => `<label class="scope-member"><input type="checkbox" class="scopeMember" value="${m.id}" ${picked.has(Number(m.id)) ? 'checked' : ''}> <span>${esc(m.name)}</span> <span class="muted">${esc(m.student_no)}</span> <span class="muted">${esc(m.political_status || '未填写')}</span> <span class="muted">${esc(m.org_name)}</span></label>`).join('')
+      : '<div class="muted">没有匹配的成员</div>';
+    $('#scopeCount').textContent = picked.size;
+  };
+  const syncScopeMode = () => {
+    const mode = ($('input[name="vScopeType"]:checked') || {}).value || 'all';
+    $('#scopeStatusWrap').style.display = mode === 'all' ? 'none' : 'block';
+    $('#scopeCustomWrap').style.display = mode === 'custom' ? 'block' : 'none';
+  };
+  $$('input[name="vScopeType"]').forEach((r) => r.addEventListener('change', syncScopeMode));
+  $('#scopeMemberList').addEventListener('change', (e) => {
+    if (!e.target.classList.contains('scopeMember')) return;
+    const n = Number(e.target.value);
+    if (e.target.checked) picked.add(n); else picked.delete(n);
+    $('#scopeCount').textContent = picked.size;
+  });
+  $('#scopeSearch').addEventListener('input', (e) => renderMembers(e.target.value));
+  $('#scopeClear').addEventListener('click', () => { picked.clear(); renderMembers($('#scopeSearch').value); });
+  renderMembers('');
+  syncScopeMode();
 
   $('#addOpt').addEventListener('click', () => {
     const row = document.createElement('div');
@@ -1176,6 +1230,9 @@ async function openPollModal(id) {
 
   $('#savePoll').addEventListener('click', async () => {
     const opts = $$('#optList .optText').map((x) => ({ text: x.value.trim() })).filter((o) => o.text);
+    const scopeType = ($('input[name="vScopeType"]:checked') || {}).value || 'all';
+    const scopeStatuses = scopeType === 'all' ? [] : $$('.scopeStatus').filter((x) => x.checked).map((x) => x.value);
+    const scopeMemberIds = scopeType === 'custom' ? [...picked] : [];
     const body = {
       title: $('#vTitle').value.trim(),
       description: $('#vDesc').value,
@@ -1186,10 +1243,15 @@ async function openPollModal(id) {
       allow_change_vote: $('#vChange').checked,
       start_at: $('#vStart').value || null,
       end_at: $('#vEnd').value || null,
+      scope_type: scopeType,
+      scope_statuses: scopeStatuses,
+      scope_member_ids: scopeMemberIds,
       options: opts,
     };
     if (!body.title) { toast('请填写投票标题', 'err'); return; }
     if (opts.length < 2) { toast('至少填写 2 个选项', 'err'); return; }
+    if (scopeType === 'status' && !scopeStatuses.length) { toast('请至少勾选一个政治面貌标签', 'err'); return; }
+    if (scopeType === 'custom' && !scopeMemberIds.length) { toast('请至少勾选一位可参与的同学', 'err'); return; }
     try {
       if (id) await api('PUT', 'polls/' + id, body); else await api('POST', 'polls', body);
       toast('保存成功'); closeModal(); route();
@@ -1214,7 +1276,7 @@ async function showPollResults(id) {
     ? `<div class="info mt">投票人明细：<br>${voters.map((v) => `<span class="tag">${esc(v.name)}（${esc(v.student_no)}）→ ${esc(optMap[v.option_id] || v.option_id)}</span>`).join(' ')}</div>`
     : '';
   openModal(modalHtml(`投票结果：${poll.title}`, `
-    <div class="info mb">参与 ${participants} 人 · 应参与 ${total_eligible} 人 · 参与率 ${rate}%</div>
+    <div class="info mb">参与 ${participants} 人 · 应参与 ${total_eligible} 人 · 参与率 ${rate}% · 范围：${esc(scopeSummary(poll))}</div>
     ${bars}
     ${voterDetail}
     <div class="info mt"><a class="btn btn-ghost btn-sm" href="/api/polls/${id}/export" download>⬇ 导出 CSV</a></div>

@@ -288,7 +288,7 @@ export async function handleRequest(req, path, method) {
       const p = await currentPrincipal(req);
       if (!p) return fail('未登录', 401);
       if (p.type === 'admin') return ok({ type: 'admin', user: { id: p.user.id, email: p.user.email, name: p.user.name, role: p.user.role } });
-      return ok({ type: 'member', member: { id: p.member.id, name: p.member.name, student_no: p.member.student_no } });
+      return ok({ type: 'member', member: { id: p.member.id, name: p.member.name, student_no: p.member.student_no, political_status: p.member.political_status || '' } });
     }
     return fail('接口不存在', 404);
   }
@@ -646,14 +646,103 @@ async function pollWithOptions(id) {
   if (!poll) return null;
   const options = await query('SELECT * FROM poll_options WHERE poll_id = $1 ORDER BY sort_order, id', [id]);
   poll.options = options;
+  poll.scope_statuses = Array.isArray(poll.scope_statuses) ? poll.scope_statuses : [];
   poll.effective_status = pollEffectiveStatus(poll);
   return poll;
 }
 
+/* ---- 参与范围 ---- */
+// all：全体在库成员；status：按政治面貌标签；custom：逐个勾选的成员（叠加标签仍生效）
+const SCOPE_TYPES = ['all', 'status', 'custom'];
+
+function normalizeScope(statuses) {
+  if (!Array.isArray(statuses)) return [];
+  return [...new Set(statuses.map((s) => String(s || '').trim()).filter(Boolean))];
+}
+
+// 当前库中实际存在的政治面貌标签（含「无标签」空串），供管理端勾选
+async function distinctPoliticalStatuses() {
+  const rows = await query(`SELECT DISTINCT COALESCE(political_status, '') AS s FROM members ORDER BY 1`);
+  return rows.map((r) => r.s);
+}
+
+function scopeStatusesOf(poll) {
+  return normalizeScope(poll.scope_statuses);
+}
+
+async function pollTargetIds(pollId) {
+  const rows = await query('SELECT member_id FROM poll_targets WHERE poll_id = $1', [pollId]);
+  return rows.map((r) => Number(r.member_id));
+}
+
+// 单成员是否在范围内。注意：状态会实时变化，投票当时被移出范围的人，其已投票数仍保留在统计里。
+async function memberInScope(poll, member, targetIds) {
+  if (!member) return false;
+  if (poll.scope_type === 'custom') {
+    const ids = targetIds || await pollTargetIds(poll.id);
+    if (!ids.includes(Number(member.id))) return false;
+  }
+  const statuses = scopeStatusesOf(poll);
+  if (statuses.length) {
+    // 空串标签指「政治面貌为空/未填写」的成员
+    if (!statuses.includes(String(member.political_status ?? ''))) return false;
+  }
+  return true;
+}
+
+// 应参与人数：与 memberInScope 同一套判定，保证分母和实际可投票人群一致
+async function countEligible(poll) {
+  const params = [];
+  const where = [];
+  if (poll.scope_type === 'custom') {
+    params.push(await pollTargetIds(poll.id));
+    where.push(`id = ANY($${params.length}::int[])`);
+  }
+  const statuses = scopeStatusesOf(poll);
+  if (statuses.length) {
+    params.push(statuses);
+    where.push(`COALESCE(political_status, '') = ANY($${params.length}::text[])`);
+  }
+  const sql = `SELECT COUNT(*) c FROM members${where.length ? ' WHERE ' + where.join(' AND ') : ''}`;
+  return Number((await queryOne(sql, params)).c);
+}
+
+// 范围内成员的邮箱，用于投票邮件按范围投递
+async function scopeRecipients(poll) {
+  const params = [];
+  const where = [`email IS NOT NULL`, `email <> ''`];
+  if (poll.scope_type === 'custom') {
+    params.push(await pollTargetIds(poll.id));
+    where.push(`id = ANY($${params.length}::int[])`);
+  }
+  const statuses = scopeStatusesOf(poll);
+  if (statuses.length) {
+    params.push(statuses);
+    where.push(`COALESCE(political_status, '') = ANY($${params.length}::text[])`);
+  }
+  const rows = await query(`SELECT email FROM members WHERE ${where.join(' AND ')}`, params);
+  return [...new Set(rows.map((r) => String(r.email).trim()).filter(Boolean))];
+}
+
+const DENY_SCOPE_MSG = '对不起，你没有权限参与本次投票';
+
+// custom 模式下逐个勾选的成员写入 poll_targets；其他模式清空，避免残留
+async function savePollTargets(pollId, scopeType, memberIds) {
+  await query('DELETE FROM poll_targets WHERE poll_id = $1', [pollId]);
+  if (scopeType !== 'custom') return;
+  const ids = [...new Set((Array.isArray(memberIds) ? memberIds : []).map(Number).filter((n) => Number.isInteger(n) && n > 0))];
+  if (!ids.length) return;
+  const valid = await query(`SELECT id FROM members WHERE id = ANY($1::int[])`, [ids]);
+  for (const r of valid) {
+    await query('INSERT INTO poll_targets (poll_id, member_id) VALUES ($1,$2) ON CONFLICT DO NOTHING', [pollId, r.id]);
+  }
+}
+
 async function pollResults(pollId) {
+  const poll = await pollWithOptions(pollId);
   const tally = await query('SELECT option_id, COUNT(*) c FROM poll_votes WHERE poll_id = $1 GROUP BY option_id', [pollId]);
   const participants = Number((await queryOne('SELECT COUNT(DISTINCT member_id) c FROM poll_votes WHERE poll_id = $1', [pollId])).c);
-  const eligible = Number((await queryOne(`SELECT COUNT(*) c FROM members WHERE political_status != '群众' OR political_status = ''`)).c);
+  const eligible = poll ? await countEligible(poll) : 0;
   const counts = {};
   for (const t of tally) counts[t.option_id] = Number(t.c);
   return { counts, participants, total_eligible: eligible, rate: eligible ? Math.round((participants / eligible) * 1000) / 10 : 0 };
@@ -682,9 +771,8 @@ async function notifyPoll(pollId, req) {
   const poll = await pollWithOptions(pollId);
   if (!poll) throw new Error('投票不存在');
   if (poll.status === 'draft') throw new Error('投票尚未发布，请先发布后再发送邮件');
-  const rows = await query(`SELECT email FROM members WHERE email IS NOT NULL AND email <> ''`);
-  const recipients = [...new Set(rows.map((r) => String(r.email).trim()).filter(Boolean))];
-  if (!recipients.length) throw new Error('没有可发送的团员邮箱');
+  const recipients = await scopeRecipients(poll);
+  if (!recipients.length) throw new Error('参与范围内没有可发送的团员邮箱');
   const orgName = (await getSetting('org_name')) || '团支部';
   const proto = req.headers.get('x-forwarded-proto') || 'https';
   const host = req.headers.get('x-forwarded-host') || req.headers.get('host') || '';
@@ -725,9 +813,18 @@ async function handlePolls(req, seg, method) {
     const visible = admin
       || poll.result_visibility === 'always'
       || (poll.result_visibility === 'after_end' && poll.effective_status === 'closed');
-    const resp = { poll, participants: results.participants, total_eligible: results.total_eligible, rate: results.rate };
-    if (visible) resp.counts = results.counts;
-    if (member) {
+    const inScope = await memberInScope(poll, member);
+    // 范围外的人看不到题目与选项，只拿到拒绝原因，避免通过页面预览绕过限制
+    const resp = {
+      poll: inScope || !member ? poll : { id: poll.id, title: poll.title, scope_type: poll.scope_type, effective_status: poll.effective_status, options: [] },
+      participants: inScope || !member ? results.participants : undefined,
+      total_eligible: admin ? results.total_eligible : (inScope ? results.total_eligible : undefined),
+      rate: admin ? results.rate : (inScope ? results.rate : undefined),
+    };
+    if (visible && (inScope || !member)) resp.counts = results.counts;
+    if (member) resp.in_scope = inScope;
+    if (member && !inScope) resp.denied_reason = DENY_SCOPE_MSG;
+    if (member && inScope) {
       const my = await query('SELECT option_id FROM poll_votes WHERE poll_id = $1 AND member_id = $2', [id, member.id]);
       resp.has_voted = my.length > 0;
       resp.my_option_ids = my.map((r) => r.option_id);
@@ -740,6 +837,7 @@ async function handlePolls(req, seg, method) {
     if (!member) return fail('请先以姓名+学号登录后再投票', 401);
     const poll = await pollWithOptions(id);
     if (!poll) return fail('投票不存在', 404);
+    if (!(await memberInScope(poll, member))) return fail(DENY_SCOPE_MSG, 403);
     if (poll.effective_status !== 'open') return fail('投票未开放或已结束');
     const b = await req.json().catch(() => ({}));
     let ids = Array.isArray(b.option_ids) ? b.option_ids.map(Number) : [Number(b.option_ids)];
@@ -811,27 +909,47 @@ async function handlePolls(req, seg, method) {
 
   if (!admin) return fail('未登录或权限不足', 401);
 
+  // 新建/编辑投票时的参与范围编辑器：现有政治面貌标签 + 候选成员
+  if (seg.length === 2 && seg[1] === 'scope-options' && method === 'GET') {
+    const statuses = await distinctPoliticalStatuses();
+    const counts = await query(`SELECT COALESCE(political_status, '') AS s, COUNT(*) c FROM members GROUP BY 1`);
+    const countMap = {};
+    for (const r of counts) countMap[r.s] = Number(r.c);
+    const members = await query(`SELECT id, name, student_no, political_status, org_name FROM members ORDER BY id`);
+    return ok({
+      statuses: statuses.map((s) => ({ value: s, label: s || '(未填写)', count: countMap[s] || 0 })),
+      members: members.map((m) => ({ id: m.id, name: m.name, student_no: m.student_no, political_status: m.political_status || '', org_name: m.org_name || '' })),
+      total: members.length,
+    });
+  }
+
+  if (seg.length === 3 && seg[2] === 'scope-targets' && method === 'GET' && id) {
+    return ok({ member_ids: await pollTargetIds(id) });
+  }
+
   if (seg.length === 3 && seg[2] === 'notify' && method === 'POST' && id) {
     try { return ok(await notifyPoll(id, req)); } catch (e) { return fail(e.message); }
   }
   if (seg.length === 1 && method === 'POST') {
     const b = await req.json().catch(() => ({}));
     if (!b.title) return fail('标题不能为空');
-    const r = await queryOne(`INSERT INTO polls (title, description, poll_type, multi_max, is_anonymous, result_visibility, allow_change_vote, start_at, end_at, status, created_by)
-      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,'draft',$10) RETURNING id`,
-      [b.title, b.description || '', b.poll_type || 'single', b.poll_type === 'multiple' ? (Number(b.multi_max) || 1) : 1, !!b.is_anonymous, b.result_visibility || 'always', !!b.allow_change_vote, b.start_at || null, b.end_at || null, admin.id]);
+    const r = await queryOne(`INSERT INTO polls (title, description, poll_type, multi_max, is_anonymous, result_visibility, allow_change_vote, start_at, end_at, scope_type, scope_statuses, status, created_by)
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,'draft',$12) RETURNING id`,
+      [b.title, b.description || '', b.poll_type || 'single', b.poll_type === 'multiple' ? (Number(b.multi_max) || 1) : 1, !!b.is_anonymous, b.result_visibility || 'always', !!b.allow_change_vote, b.start_at || null, b.end_at || null, SCOPE_TYPES.includes(b.scope_type) ? b.scope_type : 'all', JSON.stringify(normalizeScope(b.scope_statuses)), admin.id]);
     const options = Array.isArray(b.options) ? b.options : [];
     for (let i = 0; i < options.length; i++) {
       if (String(options[i].text || '').trim()) {
         await query('INSERT INTO poll_options (poll_id, text, sort_order) VALUES ($1,$2,$3)', [r.id, String(options[i].text).trim(), i]);
       }
     }
+    await savePollTargets(r.id, b.scope_type, b.scope_member_ids);
     return ok({ id: r.id });
   }
   if (seg.length === 2 && method === 'PUT' && id) {
     const b = await req.json().catch(() => ({}));
-    await query(`UPDATE polls SET title=$1, description=$2, poll_type=$3, multi_max=$4, is_anonymous=$5, result_visibility=$6, allow_change_vote=$7, start_at=$8, end_at=$9, updated_at=now() WHERE id=$10`,
-      [b.title, b.description || '', b.poll_type || 'single', b.poll_type === 'multiple' ? (Number(b.multi_max) || 1) : 1, !!b.is_anonymous, b.result_visibility || 'always', !!b.allow_change_vote, b.start_at || null, b.end_at || null, id]);
+    await query(`UPDATE polls SET title=$1, description=$2, poll_type=$3, multi_max=$4, is_anonymous=$5, result_visibility=$6, allow_change_vote=$7, start_at=$8, end_at=$9, scope_type=$10, scope_statuses=$11, updated_at=now() WHERE id=$12`,
+      [b.title, b.description || '', b.poll_type || 'single', b.poll_type === 'multiple' ? (Number(b.multi_max) || 1) : 1, !!b.is_anonymous, b.result_visibility || 'always', !!b.allow_change_vote, b.start_at || null, b.end_at || null, SCOPE_TYPES.includes(b.scope_type) ? b.scope_type : 'all', JSON.stringify(normalizeScope(b.scope_statuses)), id]);
+    await savePollTargets(id, b.scope_type, b.scope_member_ids);
     // 尚无投票时才允许替换选项
     const voted = Number((await queryOne('SELECT COUNT(*) c FROM poll_votes WHERE poll_id = $1', [id])).c);
     if (voted === 0 && Array.isArray(b.options)) {

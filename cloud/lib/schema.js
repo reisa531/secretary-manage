@@ -124,6 +124,8 @@ CREATE TABLE IF NOT EXISTS polls (
   allow_change_vote BOOLEAN DEFAULT false,
   start_at TIMESTAMPTZ,
   end_at TIMESTAMPTZ,
+  scope_type TEXT DEFAULT 'all',
+  scope_statuses JSONB DEFAULT '[]'::jsonb,
   status TEXT DEFAULT 'draft',
   published_at TIMESTAMPTZ,
   created_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
@@ -152,4 +154,15 @@ CREATE INDEX IF NOT EXISTS idx_poll_votes_poll ON poll_votes(poll_id);
 CREATE INDEX IF NOT EXISTS idx_poll_options_poll ON poll_options(poll_id);
 CREATE INDEX IF NOT EXISTS idx_posts_status ON posts(status, is_pinned, published_at);
 CREATE INDEX IF NOT EXISTS idx_polls_status ON polls(status, published_at);
+
+-- 老库升级：参与范围字段（CREATE TABLE IF NOT EXISTS 不会给已有表补列）
+ALTER TABLE polls ADD COLUMN IF NOT EXISTS scope_type TEXT DEFAULT 'all';
+ALTER TABLE polls ADD COLUMN IF NOT EXISTS scope_statuses JSONB DEFAULT '[]'::jsonb;
+
+CREATE TABLE IF NOT EXISTS poll_targets (
+  poll_id INTEGER NOT NULL REFERENCES polls(id) ON DELETE CASCADE,
+  member_id INTEGER NOT NULL REFERENCES members(id) ON DELETE CASCADE,
+  PRIMARY KEY (poll_id, member_id)
+);
+CREATE INDEX IF NOT EXISTS idx_poll_targets_member ON poll_targets(member_id);
 `;
