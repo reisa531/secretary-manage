@@ -659,12 +659,50 @@ async function pollResults(pollId) {
   return { counts, participants, total_eligible: eligible, rate: eligible ? Math.round((participants / eligible) * 1000) / 10 : 0 };
 }
 
+/* ---- 投票邮件发布 ---- */
+function pollEmailHtml(poll, orgName, pollUrl) {
+  const opts = (poll.options || []).map((o) => `<li style="margin:4px 0;">${escapeHtml(o.text)}</li>`).join('');
+  const typeText = poll.poll_type === 'multiple' ? `多选（最多 ${poll.multi_max} 项）` : '单选';
+  return `<!DOCTYPE html><html><body style="font-family:-apple-system,'Segoe UI',Roboto,'PingFang SC','Microsoft YaHei',sans-serif;color:#222;line-height:1.7;max-width:640px;margin:0 auto;padding:24px;">
+  <div style="background:#c8102e;color:#fff;padding:16px 20px;border-radius:8px 8px 0 0;"><h2 style="margin:0;font-size:18px;">【投票】${escapeHtml(poll.title)}</h2></div>
+  <div style="border:1px solid #eee;border-top:none;padding:20px;border-radius:0 0 8px 8px;">
+    <p>各位团员：</p><p>团支部发起了新的投票，请及时参与。</p>
+    ${poll.description ? `<p>${escapeHtml(poll.description).replace(/\n/g, '<br>')}</p>` : ''}
+    <p><strong>投票类型：</strong>${typeText}${poll.is_anonymous ? ' · 匿名' : ' · 实名'}</p>
+    ${poll.start_at ? `<p><strong>开始时间：</strong>${escapeHtml(String(poll.start_at))}</p>` : ''}
+    ${poll.end_at ? `<p><strong>截止时间：</strong>${escapeHtml(String(poll.end_at))}</p>` : ''}
+    <p><strong>选项：</strong></p><ul>${opts}</ul>
+    <p style="margin-top:20px;"><a href="${escapeHtml(pollUrl)}" style="display:inline-block;background:#c8102e;color:#fff;text-decoration:none;padding:10px 20px;border-radius:8px;">前往投票</a></p>
+    <p style="color:#888;font-size:12px;">或访问：${escapeHtml(pollUrl)}</p>
+    <p style="color:#888;font-size:12px;margin-top:24px;">—— 此邮件由「${escapeHtml(orgName)}」通过团支部管理平台自动发送</p>
+  </div></body></html>`;
+}
+
+async function notifyPoll(pollId, req) {
+  const poll = await pollWithOptions(pollId);
+  if (!poll) throw new Error('投票不存在');
+  if (poll.status === 'draft') throw new Error('投票尚未发布，请先发布后再发送邮件');
+  const rows = await query(`SELECT email FROM members WHERE email IS NOT NULL AND email <> ''`);
+  const recipients = [...new Set(rows.map((r) => String(r.email).trim()).filter(Boolean))];
+  if (!recipients.length) throw new Error('没有可发送的团员邮箱');
+  const orgName = (await getSetting('org_name')) || '团支部';
+  const proto = req.headers.get('x-forwarded-proto') || 'https';
+  const host = req.headers.get('x-forwarded-host') || req.headers.get('host') || '';
+  const siteUrl = host && !/^(127\.0\.0\.1|localhost)/.test(host) ? `${proto}://${host}` : 'https://manage.dzhes.app';
+  const pollUrl = `${siteUrl}/polls/${poll.id}`;
+  const subject = '【投票】' + poll.title;
+  const result = await sendMail(await getSmtpConfig(), { to: recipients, subject, html: pollEmailHtml(poll, orgName, pollUrl) });
+  await query('INSERT INTO email_log (activity_id, subject, to_list, status, error, sent_at) VALUES (NULL,$1,$2,$3,$4,now())',
+    [subject, recipients.join('; '), result.ok ? '成功' : '失败', result.ok ? '' : result.message]);
+  if (!result.ok) throw new Error(result.message || '邮件发送失败');
+  return { ok: true, count: recipients.length, recipients };
+}
+
 async function handlePolls(req, seg, method) {
   const id = seg.length > 1 && /^\d+$/.test(seg[1]) ? Number(seg[1]) : null;
   const admin = await requireAdmin(req);
   const member = await requireMember(req);
   const principal = admin ? { type: 'admin' } : member ? { type: 'member', member } : { type: 'anon' };
-
   // 公开列表：匿名只看已发布
   if (seg.length === 1 && method === 'GET') {
     const rows = admin
@@ -773,6 +811,9 @@ async function handlePolls(req, seg, method) {
 
   if (!admin) return fail('未登录或权限不足', 401);
 
+  if (seg.length === 3 && seg[2] === 'notify' && method === 'POST' && id) {
+    try { return ok(await notifyPoll(id, req)); } catch (e) { return fail(e.message); }
+  }
   if (seg.length === 1 && method === 'POST') {
     const b = await req.json().catch(() => ({}));
     if (!b.title) return fail('标题不能为空');

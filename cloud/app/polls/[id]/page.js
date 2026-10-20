@@ -93,7 +93,7 @@ export default function PollPage({ params }) {
     <main className="container">
       <div className="card">
         <h1 style={{ margin: '0 0 8px' }}>{p.title} <span className={`badge ${STATUS_CLASS[st]}`}>{STATUS_LABEL[st]}</span></h1>
-        {p.description ? <div className="hint" style={{ marginBottom: 8 }}>{p.description}</div> : null}
+        {p.description ? <div className="hint desc-box" style={{ marginBottom: 8 }}>{p.description}</div> : null}
         <div className="meta">
           {p.poll_type === 'single' ? '单选' : `多选（最多 ${p.multi_max} 项）`}
           {p.is_anonymous ? ' · 匿名' : ' · 实名'}

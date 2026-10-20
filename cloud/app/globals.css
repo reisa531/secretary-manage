@@ -53,3 +53,5 @@ input[type=text], input[type=password] { padding: 9px 11px; border: 1px solid va
 .err { color: #e03131; font-size: 13px; margin-top: 8px; min-height: 18px; }
 .content-body { white-space: pre-wrap; }
 .hint { color: var(--muted); font-size: 13px; }
+.poll-preview { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.desc-box { max-height: 160px; overflow-y: auto; white-space: pre-wrap; background: #fafbfc; border: 1px solid var(--border); border-radius: 8px; padding: 10px 12px; }

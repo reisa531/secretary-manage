@@ -1094,6 +1094,15 @@ async function renderPolls(c) {
   $('#newPoll').addEventListener('click', () => openPollModal());
   $$('#pollList [data-edit]').forEach((b) => b.addEventListener('click', () => openPollModal(Number(b.dataset.edit))));
   $$('#pollList [data-res]').forEach((b) => b.addEventListener('click', () => showPollResults(Number(b.dataset.res))));
+  $$('#pollList [data-mail]').forEach((b) => b.addEventListener('click', async () => {
+    if (!confirm('确定将本次投票通过邮件发送给全体团员？')) return;
+    const btn = b; const old = btn.innerHTML; btn.disabled = true; btn.innerHTML = '<span class="spin">↻</span> 发送中…';
+    try {
+      const r = await api('POST', `polls/${btn.dataset.mail}/notify`);
+      toast(`已向 ${r.count} 位团员发送投票邮件`);
+      btn.disabled = false; btn.innerHTML = old;
+    } catch (e) { toast(e.message, 'err'); btn.disabled = false; btn.innerHTML = old; }
+  }));
   $$('#pollList [data-pub]').forEach((b) => b.addEventListener('click', async () => { await api('POST', `polls/${b.dataset.pub}/publish`); toast('已发布'); route(); }));
   $$('#pollList [data-close]').forEach((b) => b.addEventListener('click', async () => { if (!confirm('确定关闭该投票？')) return; await api('POST', `polls/${b.dataset.close}/close`); toast('已关闭'); route(); }));
   $$('#pollList [data-del]').forEach((b) => b.addEventListener('click', async () => {
@@ -1113,6 +1122,7 @@ function pollCardHtml(p) {
     <div class="ops">
       <button class="btn btn-ghost btn-sm" data-edit="${p.id}">编辑</button>
       <button class="btn btn-ghost btn-sm" data-res="${p.id}">📊 结果</button>
+      <button class="btn btn-ghost btn-sm" data-mail="${p.id}">✉️ 邮件发布</button>
       ${p.status === 'published' ? `<button class="btn btn-ghost btn-sm" data-close="${p.id}">关闭</button>` : `<button class="btn btn-ghost btn-sm" data-pub="${p.id}">发布</button>`}
       <button class="btn btn-danger btn-sm" data-del="${p.id}">删除</button>
     </div></div>

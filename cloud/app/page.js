@@ -46,7 +46,7 @@ export default async function Home() {
         return (
           <div className="card" key={p.id}>
             <h2><a href={`/polls/${p.id}`}>{p.title}</a> <span className={`badge ${STATUS_CLASS[st]}`}>{STATUS_LABEL[st]}</span></h2>
-            {p.description ? <div className="hint" style={{ marginBottom: 6 }}>{p.description}</div> : null}
+            {p.description ? <div className="hint poll-preview" style={{ marginBottom: 6 }}>{p.description}</div> : null}
             <div className="meta">开始 {fmt(p.start_at)} · 结束 {fmt(p.end_at)}</div>
           </div>
         );
